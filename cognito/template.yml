@@ -1,0 +1,124 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: Cognito user pool with hosted domain
+
+Parameters:
+  AppName:
+    Type: String
+    Description: Name of the application
+  ClientDomains:
+    Type: CommaDelimitedList
+    Description: Array of domains allowed to use this UserPool
+  AdminEmail:
+    Type: String
+    Description: Email address for administrator
+  AddGroupsToScopes:
+    Type: String
+    AllowedValues:
+      - "true"
+      - "false"
+    Default: "false"
+
+Conditions:
+  ScopeGroups: !Equals [!Ref AddGroupsToScopes, "true"]
+  # ScopeGroups: !Equals
+  #   - !Ref AddGroupsToScopes
+  #   - "true"
+
+# Declaring our resources
+Resources:
+  # creating pool
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub ${AppName}-UserPool
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 6
+      AutoVerifiedAttributes:
+        - "email"
+      UsernameAttributes:
+        - "email"
+      Schema:
+        - AttributeDataType: String
+          Name: email
+          Required: false
+  # creating pool client
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId: !Ref UserPool
+      ClientName: !Sub ${AppName}-UserPoolClient
+      GenerateSecret: false # set to false for web clients
+      SupportedIdentityProviders:
+        - COGNITO
+      CallbackURLs: !Ref ClientDomains
+      LogoutURLs: !Ref ClientDomains
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthFlows:
+        - code
+        - implicit # for testing with postman
+      AllowedOAuthScopes:
+        - email
+        - openid
+        - profile
+  # creating domain
+  UserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      Domain: !Sub ${AppName}-${AWS::AccountId}
+      UserPoolId: !Ref UserPool
+  # creating user group Admin
+  AdminUserGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      GroupName: Admin
+      Description: Admin User Group
+      Precedence: 0
+      UserPoolId: !Ref UserPool
+  # creating admin user
+  AdminUser:
+    Type: AWS::Cognito::UserPoolUser
+    Properties:
+      Username: !Ref AdminEmail
+      DesiredDeliveryMediums:
+        - EMAIL
+      ForceAliasCreation: true
+      UserAttributes:
+        - Name: email
+          Value: !Ref AdminEmail
+      UserPoolId: !Ref UserPool
+  TriggerFunction:
+    Type: AWS::Serverless::Function
+    Condition: ScopeGroups
+    Properties:
+      Timeout: 5
+      Runtime: nodejs18.x
+      CodeUri: src/
+      Handler: app.lambdaHandler
+      Events:
+        CognitoTrigger:
+          Type: Cognito
+          Properties:
+            Trigger: PreTokenGeneration
+            UserPool: !Ref UserPool
+  # add created user to the group // in admin group
+  AddUserToGroup:
+    Type: AWS::Cognito::UserPoolUserToGroupAttachment
+    Properties:
+      GroupName: !Ref AdminUserGroup
+      UserPoolId: !Ref UserPool
+      Username: !Ref AdminEmail
+# outputs
+Outputs:
+  UserPoolId:
+    Description: "User Pool ID"
+    Value: !Ref UserPool
+    Export:
+      Name: !Sub ${AppName}:UserPoolId
+  UserPoolClientId:
+    Description: "Application Client ID"
+    Value: !Ref UserPoolClient
+  AuthUrl:
+    Description: "URL User for authentication"
+    Value: !Sub https://${UserPoolDomain}.auth.${AWS::Region}.amazoncognito.com

@@ -21,24 +21,26 @@ Resources:
     Type: AWS::Serverless::HttpApi
     Properties:
       Auth:
-        # DefaultAuthorizer: UserAuth
+        # DefaultAuthorizer: GlobalAuth
         Authorizers:
-          UserAuth:
+          GlobalAuth:
             AuthorizationScopes:
               - email
-              - openid
-              - profile
+              # - openid
+              # - profile
             IdentitySource: "$request.header.Authorization"
             JwtConfiguration:
               issuer: !Sub https://cognito-idp.${AWS::Region}.amazonaws.com/${UserPoolId}
               audience:
                 - !Ref Audience
+                # - !Ref Audience2  it's available to have multiple audiences and use them in routs too
 
       CorsConfiguration:
         AllowMethods:
           - GET
         AllowOrigins:
           - "http://localhost:8000"
+  # Default Route
   LambdaFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -50,7 +52,21 @@ Resources:
             ApiId: !Ref HttpAPI
             Path: /
             Method: get
-
+  # Basic auth
+  SimpleAuthLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Events:
+        RootGet:
+          Type: HttpApi
+          Properties:
+            Auth:
+              Authorizer: GlobalAuth
+            Path: /simple
+            Method: get
+            ApiId: !Ref HttpAPI
+  # Route for admins only: requires custom token (Needs custom cognito integration)
   AdminLambdaFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -60,7 +76,56 @@ Resources:
           Type: HttpApi
           Properties:
             Auth:
-              Authorizer: UserAuth
+              Authorizer: GlobalAuth
+              AuthorizationScopes:
+                - !Sub Admin-${Audience} # for authorization use TODO: id_token ---------- NOT ACCESS_TONE
+                # - !Ref Audience2  two different user groups can access admin rout
             Path: /admin
             Method: get
             ApiId: !Ref HttpAPI
+  # Route for admins and SU: requires custom token (Needs custom cognito integration)
+  BothLambdaFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Events:
+        RootGet:
+          Type: HttpApi
+          Properties:
+            Auth:
+              Authorizer: GlobalAuth
+              AuthorizationScopes:
+                - !Sub Admin-${Audience}
+                - !Sub SU-${Audience}
+            Path: /both
+            Method: get
+            ApiId: !Ref HttpAPI
+  # Route for SU only: requires custom token (Needs custom cognito integration)
+  SULambdaFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Events:
+        RootGet:
+          Type: HttpApi
+          Properties:
+            Auth:
+              Authorizer: GlobalAuth
+              AuthorizationScopes:
+                - !Sub SU-${Audience}
+            Path: /su
+            Method: get
+            ApiId: !Ref HttpAPI
+  # Cache All Lambda Default route
+  CacheAllLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Events:
+        RootGet:
+          Type: HttpApi
+
+Outputs:
+  ApiEndpoint:
+    Description: "HTTP API endpoint"
+    Value: !Sub "https://${HttpAPI}.execute-api.${AWS::Region}.amazonaws.com"
