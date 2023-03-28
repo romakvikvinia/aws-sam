@@ -10,4 +10,4 @@ GET /su - only super users group (scope) can access <br />
 
 # Important
 
-for accessing endpoints there are used "Audiences" you have to use id_token
+For accessing endpoints there are used "Audiences" you have to use id_token
