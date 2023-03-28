@@ -2,11 +2,11 @@
 
 Here are several endpoints
 
-GET / - it's public endpoint
-GET /simple - authorization required
-GET /admin - needs authorization but there is an important point it's scope and admin group for user is required
-GET /both - authorization required but needs admin or super users group
-GET /su - only super users group (scope) can access
+GET / - it's public endpoint <br />
+GET /simple - authorization required <br />
+GET /admin - needs authorization but there is an important point it's scope and admin group for user is required <br />
+GET /both - authorization required but needs admin or super users group <br />
+GET /su - only super users group (scope) can access <br />
 
 # Important
 
