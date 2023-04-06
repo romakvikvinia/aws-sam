@@ -84,7 +84,7 @@ Resources:
                 - lambda:InvokeFunction
               Effect: Allow
               Resource:
-                - !GetAtt ProcessedDataBucket.Arn
+                - !GetAtt ProcessFunction.Arn
 
   # DynamoDB
   DynamoTable:

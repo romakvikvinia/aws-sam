@@ -11,7 +11,7 @@ exports.processHandler = async (event) => {
   event.records.map((record) => {
     let buff = new Buffer.from(record.data, "base64");
     let text = buff.toString("utf-8");
-
+    console.log("Buffered Text", text);
     let params = {
       TableName: process.env.TABLE_NAME,
       Item: {
