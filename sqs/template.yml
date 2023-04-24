@@ -1,0 +1,77 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: SQS
+
+Globals:
+  Function:
+    Timeout: 5
+    Runtime: nodejs16.x
+    CodeUri: src/
+
+Resources:
+  DeadLetter:
+    Type: AWS::SQS::Queue
+  RawQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      DelaySeconds: 0
+      # FifoQueue: true
+      # QueueName: "myName.fifo" # if we use fifo queue we have to add QueueName and name must be ended with .fifo
+      # ContentBasedDeduplication: true # its works only with fifo - deletes duplications
+      # encryptions side
+      # KmsDataKeyReusePeriodSeconds: 5
+      # KmsMasterKeyId: /aws/kms/sqs/myQueue
+      # MaximumMessageSize: 262144
+      VisibilityTimeout: 60 # it means item can not read again 60 second ,when it is in used
+      # MessageRetentionPeriod: 1209600 # if item is not used,  time period before if goes DeadLetterQueue
+      # ReceiveMessageWaitTimeSeconds: 0 # 0 means short pool - 10 means long pool it means I need 10 seconds for each pool,
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt DeadLetter.Arn
+        maxReceiveCount: 4 # it means if lambda throws error or not returns 200 , this item can pass again to the lambda 4 time if fails it will be pass in DeadLetterQueue
+      Tags:
+        - Key: Series
+          Value: SQS
+  TriggerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: app.lambdaHandler
+      Events:
+        SQSEvent: # Event name what I wont
+          Type: SQS # event type , there many types
+          Properties:
+            Queue: !GetAtt RawQueue.Arn
+            BatchSize: 10
+            Enabled: true
+
+  # policy
+  RawQueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      PolicyDocument:
+        Id: Policy1588221050082
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action:
+              - sqs:SendMessage
+            Resource: !GetAtt RawQueue.Arn
+            Principal:
+              ### Update this with your desired principals ###
+              AWS:
+                - [desired account number]
+                - [desired user or role ARN]
+            Condition:
+              DateGreaterThan:
+                aws:CurrentTime: 2023-04-24T12:00Z
+              DateLessThan:
+                aws:CurrentTime: 2023-04-25T12:00Z
+      Queues:
+        - !Ref RawQueue
+
+Outputs:
+  RawSQSUrl:
+    Description: URL of the SQS
+    Value: !Ref RawQueue
+  DeadLetterQueueUrl:
+    Description: URL of the Dead Letter Queue
+    Value: !Ref DeadLetter
