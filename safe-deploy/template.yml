@@ -1,0 +1,119 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: Safe Deploy template
+
+Parameters:
+  ClientDomains:
+    Type: CommaDelimitedList
+    Description: Array of domains for CORS
+
+Globals:
+  Function:
+    Timeout: 5
+    # CodeUri: src/
+    Runtime: nodejs16.x
+    Tracing: Active
+    Layers: 
+      - !Ref ResourceLayer
+
+Resources:
+  BaseApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      CorsConfiguration:
+        AllowMethods:
+          - GET
+        AllowOrigins: !Ref ClientDomains
+  ResourceLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: resource
+      ContentUri: layer/
+      CompatibleRuntimes:
+        - nodejs16.x
+      LicenseInfo: "MIT"
+      RetentionPolicy: Retain
+  # Get notifications about deployment    
+  AlertTopic:
+    Type: AWS::SNS::Topic
+  # endpoint
+  BaseFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: src/base.lambdaHandler
+      Description: Base lambda Function
+      AutoPublishAlias: live
+      Events:
+        ApiEvent:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref BaseApi
+            Path: /
+            Method: GET
+      DeploymentPreference:
+        Type: Linear10PercentEvery10Minute #AllAtOnce
+        TriggerConfigurations:
+          - TriggerTargetArn: !Ref AlertTopic
+            TriggerName: BaseApi
+            TriggerEvents:
+              - DeploymentStart
+              - DeploymentSuccess
+              - DeploymentFailure
+              - DeploymentStop
+              - DeploymentRollback
+        Hooks:
+          PreTraffic: !Ref BasePreFunction
+          PostTraffic: !Ref BasePostFunction
+  BasePreFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: src/hooks/basepre.lambdaHandler
+      FunctionName: "CodeDeployHook_preTrafficHook"
+      DeploymentPreference:
+        Enabled: false
+      Environment:
+        Variables:
+          FUNCTION_VERSION: !Ref BaseFunction.Version
+      Policies:
+        - Version: "2012-10-17"
+          Statement:
+          - Effect: "Allow"
+            Action:
+              - "codedeploy:PutLifecycleEventHookExecutionStatus"
+            Resource:
+              !Sub 'arn:${AWS::Partition}:codedeploy:${AWS::Region}:${AWS::AccountId}:deploymentgroup:${ServerlessDeploymentApplication}/*'
+        - Version: "2012-10-17"
+          Statement:
+          - Effect: "Allow"
+            Action:
+              - "lambda:InvokeFunction"
+            Resource: !Sub
+              - ${FunctionArn}:*
+              - FunctionArn: !GetAtt BaseFunction.Arn
+
+  BasePostFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: src/hooks/basepost.lambdaHandler
+      FunctionName: "CodeDeployHook_postTrafficHook"
+      DeploymentPreference:
+        Enabled: false
+      Environment:
+        Variables:
+          FUNCTION_VERSION: !Ref BaseFunction.Version
+      Policies:
+        - Version: "2012-10-17"
+          Statement:
+          - Effect: "Allow"
+            Action:
+              - "codedeploy:PutLifecycleEventHookExecutionStatus"
+            Resource:
+              !Sub 'arn:${AWS::Partition}:codedeploy:${AWS::Region}:${AWS::AccountId}:deploymentgroup:${ServerlessDeploymentApplication}/*'      
+      
+        
+
+
+Outputs:
+  WebEndpoint:
+    Description: "HTTP API endpoint URL"
+    Value: !Sub "https://${BaseApi}.execute-api.${AWS::Region}.amazonaws.com"
